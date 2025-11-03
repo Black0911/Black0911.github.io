@@ -3,7 +3,7 @@
 
 <head>
   <meta charset="utf-8" />
-  <title>Ramallah Waste Containers</title>
+  <title>Ramallah Waste Containers Density Map</title>
 
   <!-- مكتبة Leaflet -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
@@ -23,13 +23,26 @@
       left: 0;
     }
 
-    /* نضيف خلفية شفافة للمقياس عشان يبين بوضوح */
+    /* مقياس الرسم */
     .leaflet-control-scale {
       background: rgba(255, 255, 255, 0.85);
       border-radius: 5px;
       padding: 2px 6px;
       font-size: 12px;
       font-weight: bold;
+    }
+
+    /* شكل إشارة الشمال */
+    .leaflet-control-northarrow {
+      background: rgba(255, 255, 255, 0.8);
+      border-radius: 10px;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+      padding: 4px;
+    }
+
+    .leaflet-control-northarrow img {
+      width: 60px;
+      transform: rotate(0deg);
     }
   </style>
 </head>
@@ -40,12 +53,13 @@
   <!-- مكتبات JS -->
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
+  <script src="https://unpkg.com/leaflet.heat/dist/leaflet-heat.js"></script>
 
   <script>
     // إعداد الخريطة
     const map = L.map("map", {
       center: [31.9045, 35.2045],
-      zoom: 17.5,
+      zoom: 15,
       zoomSnap: 0.5
     });
 
@@ -57,21 +71,57 @@
       maxZoom: 20
     }).addTo(map);
 
-    // تحميل بيانات GeoJSON
+    // تحميل بيانات المناطق
     $.getJSON("RamallahZones.json", function (RZ) {
-      L.geoJson(RZ).addTo(map);
+      L.geoJson(RZ, {
+        style: {
+          color: "white",
+          weight: 1,
+          fillOpacity: 0.1
+        }
+      }).addTo(map);
     });
 
+    // ✅ تحميل نقاط الحاويات ورسم خريطة الكثافة (Heatmap)
     $.getJSON("wasteContainer.json", function (WC) {
-      L.geoJson(WC).addTo(map);
+      const points = [];
+
+      // نحول كل نقطة في الملف إلى [lat, lon, intensity]
+      WC.features.forEach(f => {
+        const coords = f.geometry.coordinates;
+        points.push([coords[1], coords[0], 1]); // [lat, lon, intensity=1]
+      });
+
+      // إنشاء خريطة الكثافة
+      const heat = L.heatLayer(points, {
+        radius: 25,          // حجم التأثير
+        blur: 15,            // تمويه
+        maxZoom: 17,
+        gradient: {          // تدرج الألوان (من الأخضر إلى الأحمر)
+          0.2: "green",
+          0.5: "yellow",
+          0.8: "orange",
+          1.0: "red"
+        }
+      }).addTo(map);
     });
 
-    // ✅ مقياس الرسم (يظهر بالمتر والميل)
+    // ✅ إضافة مقياس الرسم
     L.control.scale({
       position: 'bottomleft',
       imperial: true,
       maxWidth: 200
     }).addTo(map);
+
+    // ✅ إضافة إشارة الشمال
+    const north = L.control({ position: "topright" });
+    north.onAdd = function (map) {
+      const div = L.DomUtil.create("div", "leaflet-control-northarrow");
+      div.innerHTML = '<img src="https://upload.wikimedia.org/wikipedia/commons/thumb/6/6b/Compass_rose_simple.svg/200px-Compass_rose_simple.svg.png">';
+      return div;
+    };
+    north.addTo(map);
   </script>
 </body>
+
 </html>
