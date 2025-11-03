@@ -6,7 +6,7 @@
   <title>Ramallah Waste Containers</title>
 
   <!-- مكتبة Leaflet -->
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.6.0/dist/leaflet.css" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 
   <style>
     body {
@@ -18,8 +18,17 @@
     #map {
       position: absolute;
       width: 100%;
+      height: 100%;
       top: 0;
-      bottom: 0;
+      left: 0;
+    }
+
+    /* هذا لضمان أن المقياس واضح فوق الخريطة */
+    .leaflet-control-scale {
+      background: rgba(255, 255, 255, 0.8);
+      border-radius: 5px;
+      padding: 3px 6px;
+      font-weight: bold;
     }
   </style>
 </head>
@@ -28,24 +37,21 @@
   <div id="map"></div>
 
   <!-- مكتبات JS -->
-  <script src="https://unpkg.com/leaflet@1.6.0/dist/leaflet.js"></script>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
 
   <script>
     // إعداد الخريطة
-    const mapOptions = {
-      zoomSnap: 0.5,
+    const map = L.map("map", {
       center: [31.9045, 35.2045],
       zoom: 17.5,
-    };
+      zoomSnap: 0.5
+    });
 
-    // إنشاء الخريطة
-    const map = L.map("map", mapOptions);
-
-    // إضافة طبقة الأساس
+    // إضافة خريطة الأساس
     L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
       attribution:
-        '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
+        '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> | &copy; <a href="https://carto.com/attributions">CARTO</a>',
       subdomains: 'abcd',
       maxZoom: 20
     }).addTo(map);
@@ -59,11 +65,13 @@
       L.geoJson(WC).addTo(map);
     });
 
-    // ✅ إضافة مقياس الرسم (Scale Bar)
+    // ✅ إضافة مقياس الرسم
     L.control.scale({
-      position: 'bottomleft',  // موقع المقياس
-      imperial: true           // تفعيل وحدات الميل (بالإضافة إلى المتر)
+      position: 'bottomleft',  // الموقع
+      imperial: true,          // عرض بالمتر والميل
+      maxWidth: 200
     }).addTo(map);
   </script>
 </body>
+
 </html>
