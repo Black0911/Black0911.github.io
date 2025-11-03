@@ -1,127 +1,234 @@
 <!DOCTYPE html>
 <html lang="en">
-
 <head>
   <meta charset="utf-8" />
-  <title>Ramallah Waste Containers Density Map</title>
+  <title>Ramallah Waste Containers - Day/Night + North + Heat</title>
 
-  <!-- مكتبة Leaflet -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 
   <style>
-    body {
-      margin: 0;
-      height: 100%;
-      width: 100%;
-    }
+    body { margin:0; height:100%; width:100%; font-family: sans-serif; }
+    #map { position:absolute; top:0; left:0; right:0; bottom:0; }
 
-    #map {
-      position: absolute;
-      width: 100%;
-      height: 100%;
-      top: 0;
-      left: 0;
-    }
-
-    /* مقياس الرسم */
+    /* scale */
     .leaflet-control-scale {
-      background: rgba(255, 255, 255, 0.85);
+      background: rgba(255,255,255,0.85);
       border-radius: 5px;
       padding: 2px 6px;
-      font-size: 12px;
-      font-weight: bold;
+      font-size:12px; font-weight:600;
     }
 
-    /* شكل إشارة الشمال */
+    /* north arrow box */
     .leaflet-control-northarrow {
-      background: rgba(255, 255, 255, 0.8);
-      border-radius: 10px;
-      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
-      padding: 4px;
+      background: rgba(255,255,255,0.92);
+      border-radius: 8px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.25);
+      padding:6px;
+      line-height:0;
+    }
+    .leaflet-control-northarrow img { width:56px; height:56px; display:block; pointer-events:none; }
+
+    /* Day/Night chooser panel (initial) */
+    .mode-panel {
+      position: absolute;
+      top: 18px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(255,255,255,0.95);
+      border-radius: 8px;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.25);
+      padding: 10px 14px;
+      z-index: 1400;
+      display:flex;
+      gap:8px;
+      align-items:center;
+      font-weight:600;
+    }
+    .mode-btn {
+      padding:8px 12px;
+      border-radius:6px;
+      border: none;
+      cursor: pointer;
+      background: #eee;
+      font-weight:700;
+    }
+    .mode-btn.active { background: #2b6cb0; color: white; }
+
+    /* small persistent toggle control (top-left) */
+    .mode-toggle {
+      background: rgba(255,255,255,0.9);
+      border-radius: 6px;
+      padding: 6px 8px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+      font-weight:700;
+      cursor:pointer;
     }
 
-    .leaflet-control-northarrow img {
-      width: 60px;
-      transform: rotate(0deg);
-    }
+    /* ensure controls appear above heatmap canvas */
+    .leaflet-top, .leaflet-bottom { z-index: 1400; }
   </style>
 </head>
-
 <body>
+
   <div id="map"></div>
 
-  <!-- مكتبات JS -->
+  <!-- Initial mode chooser shown on load -->
+  <div id="initialMode" class="mode-panel" role="dialog" aria-label="Choose map mode">
+    <div>اختر الوضع:</div>
+    <button id="dayBtn" class="mode-btn">نهاري</button>
+    <button id="nightBtn" class="mode-btn">ليلي</button>
+    <button id="skipBtn" class="mode-btn" style="background:#f7fafc; font-weight:600;">تخطي</button>
+  </div>
+
+  <!-- libs -->
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
   <script src="https://unpkg.com/leaflet.heat/dist/leaflet-heat.js"></script>
 
   <script>
-    // إعداد الخريطة
-    const map = L.map("map", {
+    // --- إعداد الخريطة وطبقات الأساس (نهاري / ليلي) ---
+    const dayTiles = L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+      attribution: '&copy; OpenStreetMap | CARTO',
+      subdomains: 'abcd', maxZoom: 20
+    });
+
+    const nightTiles = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+      attribution: '&copy; OpenStreetMap | CARTO',
+      subdomains: 'abcd', maxZoom: 20
+    });
+
+    const map = L.map('map', {
       center: [31.9045, 35.2045],
       zoom: 15,
-      zoomSnap: 0.5
+      zoomSnap: 0.5,
+      layers: [nightTiles] //ولَّف الوضع الافتراضي (يتغير بحسب اختيارك)
     });
 
-    // إضافة خريطة الأساس
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-      attribution:
-        '&copy; <a href="https://www.openstreetmap.org/">OpenStreetMap</a> | &copy; <a href="https://carto.com/attributions">CARTO</a>',
-      subdomains: 'abcd',
-      maxZoom: 20
-    }).addTo(map);
-
-    // تحميل بيانات المناطق
-    $.getJSON("RamallahZones.json", function (RZ) {
-      L.geoJson(RZ, {
-        style: {
-          color: "white",
-          weight: 1,
-          fillOpacity: 0.1
+    // إضافة زر تبديل صغير دائم للوضع (يمكن تغييره لاحقًا)
+    const modeToggle = L.control({ position: 'topleft' });
+    modeToggle.onAdd = function() {
+      const div = L.DomUtil.create('div', 'mode-toggle');
+      div.innerHTML = 'تبديل الوضع';
+      div.title = 'تبديل بين النهاري والليلي';
+      L.DomEvent.on(div, 'click', () => {
+        // toggle between day & night
+        if (map.hasLayer(nightTiles)) {
+          map.removeLayer(nightTiles);
+          dayTiles.addTo(map);
+        } else {
+          map.removeLayer(dayTiles);
+          nightTiles.addTo(map);
         }
-      }).addTo(map);
-    });
-
-    // ✅ تحميل نقاط الحاويات ورسم خريطة الكثافة (Heatmap)
-    $.getJSON("wasteContainer.json", function (WC) {
-      const points = [];
-
-      // نحول كل نقطة في الملف إلى [lat, lon, intensity]
-      WC.features.forEach(f => {
-        const coords = f.geometry.coordinates;
-        points.push([coords[1], coords[0], 1]); // [lat, lon, intensity=1]
       });
+      return div;
+    };
+    modeToggle.addTo(map);
 
-      // إنشاء خريطة الكثافة
-      const heat = L.heatLayer(points, {
-        radius: 25,          // حجم التأثير
-        blur: 15,            // تمويه
-        maxZoom: 17,
-        gradient: {          // تدرج الألوان (من الأخضر إلى الأحمر)
-          0.2: "green",
-          0.5: "yellow",
-          0.8: "orange",
-          1.0: "red"
-        }
-      }).addTo(map);
-    });
+    // --- مقياس الرسم ---
+    L.control.scale({ position: 'bottomleft', imperial: true, maxWidth: 200 }).addTo(map);
 
-    // ✅ إضافة مقياس الرسم
-    L.control.scale({
-      position: 'bottomleft',
-      imperial: true,
-      maxWidth: 200
-    }).addTo(map);
-
-    // ✅ إضافة إشارة الشمال
-    const north = L.control({ position: "topright" });
-    north.onAdd = function (map) {
-      const div = L.DomUtil.create("div", "leaflet-control-northarrow");
-      div.innerHTML = '<img src="https://upload.wikimedia.org/wikipedia/commons/thumb/6/6b/Compass_rose_simple.svg/200px-Compass_rose_simple.svg.png">';
+    // --- شمال (North Arrow) إصلاح: تعطيل نقل الأحداث لكي ما تمنع التفاعل مع الخريطة ---
+    const north = L.control({ position: 'topright' });
+    north.onAdd = function() {
+      const div = L.DomUtil.create('div', 'leaflet-control-northarrow');
+      // صورة من ويكيميديا (لا تحتاج تحميل محلي) - pointer-events none على الصورة لضمان التمرير على الخريطة
+      div.innerHTML = '<img src="https://upload.wikimedia.org/wikipedia/commons/thumb/6/6b/Compass_rose_simple.svg/200px-Compass_rose_simple.svg.png" alt="North arrow">';
+      // مهم: منع تمرير النقرات لمنع تداخل مع الخريطة
+      L.DomEvent.disableClickPropagation(div);
+      L.DomEvent.disableScrollPropagation(div);
       return div;
     };
     north.addTo(map);
+
+    // --- نُحمّل GeoJSON ونسوي Heatmap ---
+    let heatLayer = null;
+    $.getJSON("wasteContainer.json")
+      .done(function(WC) {
+        const points = [];
+        WC.features.forEach(f => {
+          const coords = f.geometry.coordinates;
+          // intensity 1 لكل نقطة — يمكن استخدام خاصية من الـfeature لزيادة الوزن
+          points.push([coords[1], coords[0], 1]);
+        });
+
+        heatLayer = L.heatLayer(points, {
+          radius: 25,
+          blur: 15,
+          maxZoom: 17,
+          // gradient من الأخضر للأحمر
+          gradient: { 0.2: 'green', 0.45: 'yellow', 0.7: 'orange', 1.0: 'red' }
+        }).addTo(map);
+      })
+      .fail(function() { console.error("فشل تحميل wasteContainer.json"); });
+
+    // إضافة طبقة الـZones (حدود) إن وجدت
+    $.getJSON("RamallahZones.json")
+      .done(function(RZ) {
+        L.geoJson(RZ, {
+          style: { color: 'white', weight: 1, fillOpacity: 0.06 }
+        }).addTo(map);
+      })
+      .fail(function(){ console.warn("RamallahZones.json غير موجود أو فشل التحميل"); });
+
+    // --- تحديث مظهر الخريطة عند تغيير الزوم (خيار لتحسين مظهر الهيت ماب) ---
+    // هنا نضبط radius حسب مستوى الزوم: كلما صغر الزوم نجعل radius أكبر لتجميع النقاط؛ كلما كبُر الزوم نصغّره.
+    function adjustHeatRadius() {
+      if (!heatLayer) return;
+      const z = map.getZoom();
+      // قواعد تقريبية للـradius حسب الزوم — عدّل القيم حسب حاجتك
+      const radius = (z >= 17) ? 12 : (z >= 15) ? 20 : (z >= 13) ? 30 : 40;
+      const blur = Math.round(radius * 0.6);
+      // إعادة إنشاء الـheat layer مع نفس النقاط بسرعة:
+      const latlngs = heatLayer._latlngs || []; // الحصول على النقاط الحالية
+      map.removeLayer(heatLayer);
+      heatLayer = L.heatLayer(latlngs, {
+        radius: radius,
+        blur: blur,
+        maxZoom: 17,
+        gradient: { 0.2: 'green', 0.45: 'yellow', 0.7: 'orange', 1.0: 'red' }
+      }).addTo(map);
+    }
+
+    // شغّل الضبط وقت تغيير الزوم وانتهائه
+    map.on('zoomend', adjustHeatRadius);
+
+    // --- Initial mode chooser logic (panel shown at start) ---
+    const initialPanel = document.getElementById('initialMode');
+    const dayBtn = document.getElementById('dayBtn');
+    const nightBtn = document.getElementById('nightBtn');
+    const skipBtn = document.getElementById('skipBtn');
+
+    function chooseMode(mode) {
+      if (mode === 'day') {
+        if (map.hasLayer(nightTiles)) map.removeLayer(nightTiles);
+        dayTiles.addTo(map);
+        dayBtn.classList.add('active'); nightBtn.classList.remove('active');
+      } else if (mode === 'night') {
+        if (map.hasLayer(dayTiles)) map.removeLayer(dayTiles);
+        nightTiles.addTo(map);
+        nightBtn.classList.add('active'); dayBtn.classList.remove('active');
+      }
+      // اخفاء اللوحة بعد الاختيار (يمكن إظهارها مرة ثانية بواسطة زر التبديل)
+      initialPanel.style.display = 'none';
+    }
+
+    dayBtn.addEventListener('click', () => chooseMode('day'));
+    nightBtn.addEventListener('click', () => chooseMode('night'));
+    skipBtn.addEventListener('click', () => { initialPanel.style.display = 'none'; });
+
+    // اختياري: اضبط الافتراضي بناء على الوقت المحلي (مثال بسيط)
+    (function setDefaultByClock() {
+      try {
+        const hour = new Date().getHours();
+        if (hour >= 6 && hour < 18) {
+          // نهار
+          dayBtn.classList.add('active');
+        } else {
+          nightBtn.classList.add('active');
+        }
+      } catch (e) {}
+    })();
+
   </script>
 </body>
-
 </html>
